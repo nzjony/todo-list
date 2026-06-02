@@ -1,6 +1,10 @@
 const state = {
-  todos: []
+  todos: [],
+  suggestionLimit: 6
 };
+
+const INITIAL_SUGGESTION_LIMIT = 6;
+const SUGGESTION_PAGE_SIZE = 5;
 
 const appShell = document.querySelector(".app-shell");
 const pinForm = document.querySelector("#pin-form");
@@ -60,20 +64,30 @@ function activeTitles() {
 function suggestionTitles() {
   const query = normalizedTitle(titleInput.value).toLowerCase();
   const active = activeTitles();
-  const seen = new Set();
+  const counts = new Map();
 
-  return state.todos
-    .filter((todo) => todo.completed)
-    .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))
-    .map((todo) => normalizedTitle(todo.title))
-    .filter((title) => {
-      const key = title.toLowerCase();
-      if (!title || seen.has(key) || active.has(key)) return false;
-      if (query && !key.includes(query)) return false;
-      seen.add(key);
-      return true;
-    })
-    .slice(0, 8);
+  for (const todo of state.todos) {
+    if (!todo.completed) continue;
+
+    const title = normalizedTitle(todo.title);
+    const key = title.toLowerCase();
+    if (!title || active.has(key)) continue;
+    if (query && !key.includes(query)) continue;
+
+    const current = counts.get(key) || {
+      count: 0,
+      latest: 0,
+      title
+    };
+
+    current.count += 1;
+    current.latest = Math.max(current.latest, new Date(todo.updatedAt || todo.createdAt).getTime());
+    counts.set(key, current);
+  }
+
+  return [...counts.values()]
+    .sort((a, b) => b.count - a.count || b.latest - a.latest || a.title.localeCompare(b.title))
+    .map((item) => item.title);
 }
 
 function sortedTodos(completed) {
@@ -136,15 +150,34 @@ function renderItem(todo) {
 
 function renderSuggestions() {
   suggestions.replaceChildren();
-  const titles = suggestionTitles();
-  suggestions.hidden = titles.length === 0;
+  const allTitles = suggestionTitles();
+  const visibleTitles = allTitles.slice(0, state.suggestionLimit);
+  suggestions.hidden = allTitles.length === 0;
 
-  for (const title of titles) {
+  for (const title of visibleTitles) {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = title;
+    button.className = "suggestion-chip";
     button.addEventListener("click", () => addTodoFromTitle(title));
     suggestions.append(button);
+  }
+
+  if (allTitles.length > visibleTitles.length) {
+    const moreButton = document.createElement("button");
+    moreButton.type = "button";
+    moreButton.className = "suggestion-more";
+    moreButton.setAttribute("aria-label", "Show more suggestions");
+    moreButton.innerHTML = `
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <path d="M6 9l6 6 6-6"></path>
+      </svg>
+    `;
+    moreButton.addEventListener("click", () => {
+      state.suggestionLimit += SUGGESTION_PAGE_SIZE;
+      renderSuggestions();
+    });
+    suggestions.append(moreButton);
   }
 }
 
@@ -243,7 +276,10 @@ async function boot() {
   }
 }
 
-titleInput.addEventListener("input", renderSuggestions);
+titleInput.addEventListener("input", () => {
+  state.suggestionLimit = INITIAL_SUGGESTION_LIMIT;
+  renderSuggestions();
+});
 pinForm.addEventListener("submit", login);
 todoForm.addEventListener("submit", addTodo);
 logoutButton.addEventListener("click", logout);
