@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Reminders</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="app-shell" data-auth="loading">
+      <section class="pin-panel" aria-labelledby="pin-title">
+        <div class="brand-mark" aria-hidden="true">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+        <h1 id="pin-title">Reminders</h1>
+        <p>Enter the shared PIN to open your list.</p>
+        <form id="pin-form" class="pin-form">
+          <label for="pin-input">PIN</label>
+          <div class="pin-row">
+            <input id="pin-input" name="pin" inputmode="numeric" autocomplete="current-password" type="password" required>
+            <button type="submit">Unlock</button>
+          </div>
+          <p id="pin-error" class="form-error" role="alert"></p>
+          <p id="pin-warning" class="warning" hidden>Default development PIN is active.</p>
+        </form>
+      </section>
+
+      <section class="todo-app" aria-label="To-do list">
+        <aside class="sidebar">
+          <div>
+            <p class="eyebrow">Personal</p>
+            <h1>Reminders</h1>
+          </div>
+          <nav class="filters" aria-label="List filters">
+            <button class="filter active" data-filter="active" type="button">
+              <span>Active</span>
+              <strong id="active-count">0</strong>
+            </button>
+            <button class="filter" data-filter="today" type="button">
+              <span>Today</span>
+              <strong id="today-count">0</strong>
+            </button>
+            <button class="filter" data-filter="scheduled" type="button">
+              <span>Scheduled</span>
+              <strong id="scheduled-count">0</strong>
+            </button>
+            <button class="filter" data-filter="completed" type="button">
+              <span>Completed</span>
+              <strong id="completed-count">0</strong>
+            </button>
+          </nav>
+          <button id="logout-button" class="ghost-button" type="button">Lock</button>
+        </aside>
+
+        <section class="content">
+          <header class="toolbar">
+            <div>
+              <p class="eyebrow" id="view-label">Active</p>
+              <h2 id="view-title">Things to do</h2>
+            </div>
+            <label class="search">
+              <span>Search</span>
+              <input id="search-input" type="search" placeholder="Find a reminder">
+            </label>
+          </header>
+
+          <form id="todo-form" class="composer">
+            <div class="composer-main">
+              <label for="todo-title">Reminder</label>
+              <input id="todo-title" name="title" type="text" placeholder="Add a reminder" maxlength="180" required>
+            </div>
+            <div class="composer-grid">
+              <label>
+                <span>Due</span>
+                <input id="todo-due" name="dueDate" type="date">
+              </label>
+              <label>
+                <span>Priority</span>
+                <select id="todo-priority" name="priority">
+                  <option value="none">None</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </label>
+              <button type="submit">Add</button>
+            </div>
+            <label class="notes-field">
+              <span>Notes</span>
+              <textarea id="todo-notes" name="notes" placeholder="Optional details" rows="2"></textarea>
+            </label>
+          </form>
+
+          <div id="empty-state" class="empty-state" hidden>
+            <h3>No reminders here</h3>
+            <p>Add one above, or switch views to see what is already done.</p>
+          </div>
+          <ul id="todo-list" class="todo-list" aria-live="polite"></ul>
+        </section>
+      </section>
+    </main>
+
+    <template id="todo-template">
+      <li class="todo-item">
+        <label class="complete-control">
+          <input class="complete-input" type="checkbox">
+          <span></span>
+        </label>
+        <div class="todo-body">
+          <input class="title-input" maxlength="180">
+          <textarea class="notes-input" rows="1"></textarea>
+          <div class="todo-meta">
+            <input class="due-input" type="date">
+            <select class="priority-input">
+              <option value="none">No priority</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+        </div>
+        <button class="delete-button" type="button" aria-label="Delete reminder">Delete</button>
+      </li>
+    </template>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
