@@ -117,8 +117,15 @@ button {
 .pin-row,
 .add-row {
   display: grid;
-  grid-template-columns: 1fr auto;
   gap: 10px;
+}
+
+.pin-row {
+  grid-template-columns: 1fr auto;
+}
+
+.add-row {
+  grid-template-columns: 1fr 48px auto;
 }
 
 .pin-row {
@@ -439,9 +446,16 @@ button {
     align-items: start;
   }
 
-  .add-row,
   .todo-item {
     grid-template-columns: 1fr;
+  }
+
+  .add-row {
+    grid-template-columns: 1fr 48px;
+  }
+
+  .add-row button:not(.voice-button) {
+    grid-column: 1 / -1;
   }
 
   .todo-item {
