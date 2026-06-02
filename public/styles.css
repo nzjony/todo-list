@@ -138,7 +138,7 @@ button {
 }
 
 .pin-row button,
-.add-row button {
+.add-row button:not(.voice-button) {
   min-height: 48px;
   border-radius: 8px;
   padding: 0 20px;
@@ -148,8 +148,42 @@ button {
 }
 
 .pin-row button:hover,
-.add-row button:hover {
+.add-row button:not(.voice-button):hover {
   background: var(--accent-strong);
+}
+
+.voice-button {
+  display: grid;
+  width: 48px;
+  min-height: 48px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--accent-strong);
+  background: var(--surface-2);
+}
+
+.voice-button[data-recording="true"] {
+  color: #fff;
+  background: var(--danger);
+}
+
+.voice-button svg {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.voice-status {
+  min-height: 20px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
 }
 
 .form-error,

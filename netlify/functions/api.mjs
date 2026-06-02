@@ -3,6 +3,8 @@ import { getStore } from "@netlify/blobs";
 
 const TODO_PIN = process.env.TODO_PIN || "1234";
 const TODO_SECRET = process.env.TODO_SECRET || "change-me-before-internet";
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
+const TRANSCRIPTION_MODEL = process.env.TRANSCRIPTION_MODEL || "gpt-4o-mini-transcribe";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 const TODOS_KEY = "todos";
 
@@ -95,6 +97,68 @@ function sanitizeTodo(input, existing = {}) {
   };
 }
 
+function audioExtension(mimeType) {
+  if (mimeType.includes("mp4")) return "m4a";
+  if (mimeType.includes("mpeg")) return "mp3";
+  if (mimeType.includes("wav")) return "wav";
+  return "webm";
+}
+
+function parseShoppingItems(transcript) {
+  return transcript
+    .replace(/\b(add|please add|put|please put|buy|get|we need|i need|to the list|on the list|shopping list)\b/gi, " ")
+    .split(/,|\n|\band\b|\bplus\b|;/i)
+    .map((item) => item.replace(/[.!?]$/g, "").trim().replace(/\s+/g, " "))
+    .filter((item) => item.length > 0)
+    .filter((item, index, items) => items.findIndex((candidate) => candidate.toLowerCase() === item.toLowerCase()) === index)
+    .slice(0, 20);
+}
+
+async function transcribeAudioPayload(body) {
+  if (!OPENAI_API_KEY) {
+    return { error: { status: 500, code: "SL-500-OPENAI-KEY", message: "OpenAI API key is not configured" } };
+  }
+
+  const mimeType = String(body.mimeType || "audio/webm");
+  const audioBase64 = String(body.audioBase64 || "");
+  if (!audioBase64) {
+    return { error: { status: 400, code: "SL-400-AUDIO", message: "Audio is required" } };
+  }
+
+  const audioBytes = Uint8Array.from(atob(audioBase64), (char) => char.charCodeAt(0));
+  if (!audioBytes.length || audioBytes.length > 8_000_000) {
+    return { error: { status: 400, code: "SL-400-AUDIO-SIZE", message: "Audio is too large" } };
+  }
+
+  const formData = new FormData();
+  const file = new Blob([audioBytes], { type: mimeType });
+  formData.append("file", file, `shopping.${audioExtension(mimeType)}`);
+  formData.append("model", TRANSCRIPTION_MODEL);
+  formData.append("response_format", "json");
+
+  const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY}`
+    },
+    body: formData
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return {
+      error: {
+        status: 502,
+        code: "SL-502-TRANSCRIBE",
+        message: payload.error?.message || "Transcription failed"
+      }
+    };
+  }
+
+  const transcript = String(payload.text || "").trim();
+  return { transcript, items: parseShoppingItems(transcript) };
+}
+
 function apiPath(request) {
   const pathname = new URL(request.url).pathname;
   const functionPrefix = "/.netlify/functions/api";
@@ -150,6 +214,16 @@ export default async (request) => {
       todos.unshift(todo);
       await writeTodos(todos);
       return jsonResponse(201, { todo });
+    }
+
+    if (pathname === "/api/transcribe" && method === "POST") {
+      const body = await request.json();
+      const result = await transcribeAudioPayload(body);
+      if (result.error) {
+        return errorResponse(result.error.status, result.error.code, result.error.message);
+      }
+
+      return jsonResponse(200, result);
     }
 
     const match = pathname.match(/^\/api\/todos\/([^/]+)$/);

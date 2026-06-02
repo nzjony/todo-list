@@ -25,9 +25,12 @@ Set these environment variables in Netlify before sharing the site:
 ```sh
 TODO_PIN=2468
 TODO_SECRET=replace-with-a-long-random-string
+OPENAI_API_KEY=sk-...
 ```
 
 Netlify will install `@netlify/blobs` during the deploy.
+
+Voice input uses the OpenAI transcription API through the Netlify Function. The API key must stay in Netlify environment variables; do not put it in browser code.
 
 ## Other internet access
 

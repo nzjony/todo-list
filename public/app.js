@@ -22,6 +22,12 @@ const emptyCompleted = document.querySelector("#empty-completed");
 const suggestions = document.querySelector("#suggestions");
 const template = document.querySelector("#todo-template");
 const logoutButton = document.querySelector("#logout-button");
+const voiceButton = document.querySelector("#voice-button");
+const voiceStatus = document.querySelector("#voice-status");
+
+let mediaRecorder = null;
+let audioChunks = [];
+let recordingTimer = null;
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -219,6 +225,109 @@ async function addTodoFromTitle(rawTitle) {
   }
 }
 
+async function addTodosFromVoice(items) {
+  for (const item of items) {
+    await addTodoFromTitle(item);
+  }
+}
+
+function supportedAudioMimeType() {
+  const candidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/mp4",
+    "audio/mpeg"
+  ];
+  return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = String(reader.result || "");
+      resolve(result.slice(result.indexOf(",") + 1));
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function transcribeAudio(blob) {
+  const audioBase64 = await blobToBase64(blob);
+  return api("/api/transcribe", {
+    method: "POST",
+    body: JSON.stringify({
+      audioBase64,
+      mimeType: blob.type || "audio/webm"
+    })
+  });
+}
+
+async function stopVoiceRecording() {
+  if (!mediaRecorder || mediaRecorder.state === "inactive") return;
+  mediaRecorder.stop();
+}
+
+async function startVoiceRecording() {
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+    alert("SL-VOICE-UNSUPPORTED: Voice recording is not supported in this browser.");
+    return;
+  }
+
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  audioChunks = [];
+  const mimeType = supportedAudioMimeType();
+  mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+
+  mediaRecorder.addEventListener("dataavailable", (event) => {
+    if (event.data.size > 0) audioChunks.push(event.data);
+  });
+
+  mediaRecorder.addEventListener("stop", async () => {
+    clearTimeout(recordingTimer);
+    voiceButton.dataset.recording = "false";
+    voiceStatus.textContent = "Transcribing...";
+    stream.getTracks().forEach((track) => track.stop());
+
+    try {
+      const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+      const { items, transcript } = await transcribeAudio(blob);
+      if (!items.length) {
+        voiceStatus.textContent = transcript ? "No items found." : "No speech found.";
+        return;
+      }
+      await addTodosFromVoice(items);
+      voiceStatus.textContent = `Added ${items.length} item${items.length === 1 ? "" : "s"}.`;
+    } catch (error) {
+      voiceStatus.textContent = "";
+      alert(error.message);
+    } finally {
+      mediaRecorder = null;
+      audioChunks = [];
+    }
+  });
+
+  mediaRecorder.start();
+  voiceButton.dataset.recording = "true";
+  voiceStatus.textContent = "Recording. Tap the microphone again to stop.";
+  recordingTimer = setTimeout(stopVoiceRecording, 12000);
+}
+
+async function toggleVoiceRecording() {
+  if (mediaRecorder && mediaRecorder.state === "recording") {
+    await stopVoiceRecording();
+    return;
+  }
+
+  try {
+    await startVoiceRecording();
+  } catch (error) {
+    voiceStatus.textContent = "";
+    alert(`SL-VOICE-START: ${error.message}`);
+  }
+}
+
 async function addTodo(event) {
   event.preventDefault();
   await addTodoFromTitle(titleInput.value);
@@ -283,6 +392,7 @@ titleInput.addEventListener("input", () => {
 pinForm.addEventListener("submit", login);
 todoForm.addEventListener("submit", addTodo);
 logoutButton.addEventListener("click", logout);
+voiceButton.addEventListener("click", toggleVoiceRecording);
 
 boot().catch((error) => {
   appShell.dataset.auth = "locked";
