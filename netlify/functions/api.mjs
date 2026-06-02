@@ -17,6 +17,10 @@ function jsonResponse(status, payload, headers = {}) {
   });
 }
 
+function errorResponse(status, code, error) {
+  return jsonResponse(status, { code, error });
+}
+
 function parseCookies(request) {
   const header = request.headers.get("cookie") || "";
   return Object.fromEntries(
@@ -115,7 +119,7 @@ export default async (request) => {
     if (pathname === "/api/login" && method === "POST") {
       const body = await request.json();
       if (!pinMatches(body.pin)) {
-        return jsonResponse(401, { error: "Incorrect PIN" });
+        return errorResponse(401, "SL-401-PIN", "Incorrect PIN");
       }
 
       return jsonResponse(200, { ok: true }, { "Set-Cookie": createSessionCookie(request) });
@@ -128,7 +132,7 @@ export default async (request) => {
     }
 
     if (!hasValidSession(request)) {
-      return jsonResponse(401, { error: "PIN required" });
+      return errorResponse(401, "SL-401-SESSION", "PIN required");
     }
 
     if (pathname === "/api/todos" && method === "GET") {
@@ -139,7 +143,7 @@ export default async (request) => {
       const body = await request.json();
       const todo = sanitizeTodo(body);
       if (!todo.title) {
-        return jsonResponse(400, { error: "Title is required" });
+        return errorResponse(400, "SL-400-TITLE", "Title is required");
       }
 
       const todos = await readTodos();
@@ -154,12 +158,19 @@ export default async (request) => {
       const todos = await readTodos();
       const index = todos.findIndex((todo) => todo.id === match[1]);
       if (index === -1) {
-        return jsonResponse(404, { error: "Not found" });
+        const recreated = sanitizeTodo(body, { id: match[1] });
+        if (!recreated.title) {
+          return errorResponse(404, "SL-404-ITEM", "Item not found");
+        }
+
+        todos.unshift(recreated);
+        await writeTodos(todos);
+        return jsonResponse(200, { todo: recreated, repaired: true });
       }
 
       const updated = sanitizeTodo(body, todos[index]);
       if (!updated.title) {
-        return jsonResponse(400, { error: "Title is required" });
+        return errorResponse(400, "SL-400-TITLE", "Title is required");
       }
 
       todos[index] = updated;
@@ -171,16 +182,16 @@ export default async (request) => {
       const todos = await readTodos();
       const nextTodos = todos.filter((todo) => todo.id !== match[1]);
       if (nextTodos.length === todos.length) {
-        return jsonResponse(404, { error: "Not found" });
+        return errorResponse(404, "SL-404-ITEM", "Item not found");
       }
 
       await writeTodos(nextTodos);
       return jsonResponse(200, { ok: true });
     }
 
-    return jsonResponse(404, { error: "Not found" });
+    return errorResponse(404, "SL-404-ROUTE", "Not found");
   } catch (error) {
     console.error(error);
-    return jsonResponse(500, { error: "Something went wrong" });
+    return errorResponse(500, "SL-500-SERVER", "Something went wrong");
   }
 };

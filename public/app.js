@@ -27,7 +27,12 @@ async function api(path, options = {}) {
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload.error || "Request failed");
+    const message = payload.code
+      ? `${payload.code}: ${payload.error || "Request failed"}`
+      : payload.error || "Request failed";
+    const error = new Error(message);
+    error.code = payload.code;
+    throw error;
   }
   return payload;
 }
@@ -78,6 +83,11 @@ function sortedTodos(completed) {
 }
 
 async function updateTodo(id, patch) {
+  const current = state.todos.find((todo) => todo.id === id);
+  const payload = {
+    title: current?.title || "",
+    ...patch
+  };
   const previous = [...state.todos];
   state.todos = state.todos.map((todo) => (todo.id === id ? { ...todo, ...patch } : todo));
   render();
@@ -85,7 +95,7 @@ async function updateTodo(id, patch) {
   try {
     const { todo } = await api(`/api/todos/${id}`, {
       method: "PATCH",
-      body: JSON.stringify(patch)
+      body: JSON.stringify(payload)
     });
     state.todos = state.todos.map((item) => (item.id === id ? todo : item));
     render();

@@ -54,8 +54,12 @@ function jsonResponse(res, statusCode, payload) {
   res.end(body);
 }
 
-function notFound(res) {
-  jsonResponse(res, 404, { error: "Not found" });
+function errorResponse(res, statusCode, code, error) {
+  jsonResponse(res, statusCode, { code, error });
+}
+
+function notFound(res, code = "SL-404-ROUTE") {
+  errorResponse(res, 404, code, "Not found");
 }
 
 function parseCookies(req) {
@@ -169,7 +173,7 @@ async function handleApi(req, res) {
   if (url.pathname === "/api/login" && req.method === "POST") {
     const body = await readRequestJson(req);
     if (!pinMatches(body.pin)) {
-      jsonResponse(res, 401, { error: "Incorrect PIN" });
+      errorResponse(res, 401, "SL-401-PIN", "Incorrect PIN");
       return;
     }
 
@@ -185,7 +189,7 @@ async function handleApi(req, res) {
   }
 
   if (!hasValidSession(req)) {
-    jsonResponse(res, 401, { error: "PIN required" });
+    errorResponse(res, 401, "SL-401-SESSION", "PIN required");
     return;
   }
 
@@ -198,7 +202,7 @@ async function handleApi(req, res) {
     const body = await readRequestJson(req);
     const todo = sanitizeTodo(body);
     if (!todo.title) {
-      jsonResponse(res, 400, { error: "Title is required" });
+      errorResponse(res, 400, "SL-400-TITLE", "Title is required");
       return;
     }
 
@@ -215,13 +219,21 @@ async function handleApi(req, res) {
     const todos = await readTodos();
     const index = todos.findIndex((todo) => todo.id === match[1]);
     if (index === -1) {
-      notFound(res);
+      const recreated = sanitizeTodo(body, { id: match[1] });
+      if (!recreated.title) {
+        errorResponse(res, 404, "SL-404-ITEM", "Item not found");
+        return;
+      }
+
+      todos.unshift(recreated);
+      await writeTodos(todos);
+      jsonResponse(res, 200, { todo: recreated, repaired: true });
       return;
     }
 
     const updated = sanitizeTodo(body, todos[index]);
     if (!updated.title) {
-      jsonResponse(res, 400, { error: "Title is required" });
+      errorResponse(res, 400, "SL-400-TITLE", "Title is required");
       return;
     }
 
@@ -235,7 +247,7 @@ async function handleApi(req, res) {
     const todos = await readTodos();
     const nextTodos = todos.filter((todo) => todo.id !== match[1]);
     if (nextTodos.length === todos.length) {
-      notFound(res);
+      notFound(res, "SL-404-ITEM");
       return;
     }
 
@@ -257,7 +269,7 @@ const server = createServer(async (req, res) => {
     await serveStatic(req, res);
   } catch (error) {
     console.error(error);
-    jsonResponse(res, 500, { error: "Something went wrong" });
+    errorResponse(res, 500, "SL-500-SERVER", "Something went wrong");
   }
 });
 
