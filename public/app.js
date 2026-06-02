@@ -25,9 +25,8 @@ const logoutButton = document.querySelector("#logout-button");
 const voiceButton = document.querySelector("#voice-button");
 const voiceStatus = document.querySelector("#voice-status");
 
-let mediaRecorder = null;
-let audioChunks = [];
-let recordingTimer = null;
+let recognition = null;
+let isListening = false;
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -231,98 +230,93 @@ async function addTodosFromVoice(items) {
   }
 }
 
-function supportedAudioMimeType() {
-  const candidates = [
-    "audio/webm;codecs=opus",
-    "audio/webm",
-    "audio/mp4",
-    "audio/mpeg"
-  ];
-  return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+function parseShoppingItems(transcript) {
+  return transcript
+    .replace(/\b(add|please add|put|please put|buy|get|we need|i need|to the list|on the list|shopping list)\b/gi, " ")
+    .split(/,|\n|\band\b|\bplus\b|;/i)
+    .map((item) => item.replace(/[.!?]$/g, "").trim().replace(/\s+/g, " "))
+    .filter((item) => item.length > 0)
+    .filter((item, index, items) => items.findIndex((candidate) => candidate.toLowerCase() === item.toLowerCase()) === index)
+    .slice(0, 20);
 }
 
-function blobToBase64(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = String(reader.result || "");
-      resolve(result.slice(result.indexOf(",") + 1));
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
+function speechRecognitionConstructor() {
+  return window.SpeechRecognition || window.webkitSpeechRecognition;
 }
 
-async function transcribeAudio(blob) {
-  const audioBase64 = await blobToBase64(blob);
-  return api("/api/transcribe", {
-    method: "POST",
-    body: JSON.stringify({
-      audioBase64,
-      mimeType: blob.type || "audio/webm"
-    })
-  });
+function setListening(nextIsListening) {
+  isListening = nextIsListening;
+  voiceButton.dataset.recording = String(nextIsListening);
 }
 
-async function stopVoiceRecording() {
-  if (!mediaRecorder || mediaRecorder.state === "inactive") return;
-  mediaRecorder.stop();
-}
+function createRecognition() {
+  const SpeechRecognition = speechRecognitionConstructor();
+  if (!SpeechRecognition) return null;
 
-async function startVoiceRecording() {
-  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-    alert("SL-VOICE-UNSUPPORTED: Voice recording is not supported in this browser.");
-    return;
-  }
+  const nextRecognition = new SpeechRecognition();
+  nextRecognition.lang = document.documentElement.lang || "en-US";
+  nextRecognition.continuous = false;
+  nextRecognition.interimResults = false;
+  nextRecognition.maxAlternatives = 1;
 
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  audioChunks = [];
-  const mimeType = supportedAudioMimeType();
-  mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-
-  mediaRecorder.addEventListener("dataavailable", (event) => {
-    if (event.data.size > 0) audioChunks.push(event.data);
+  nextRecognition.addEventListener("start", () => {
+    setListening(true);
+    voiceStatus.textContent = "Listening. Tap the microphone again to stop.";
   });
 
-  mediaRecorder.addEventListener("stop", async () => {
-    clearTimeout(recordingTimer);
-    voiceButton.dataset.recording = "false";
-    voiceStatus.textContent = "Transcribing...";
-    stream.getTracks().forEach((track) => track.stop());
+  nextRecognition.addEventListener("result", async (event) => {
+    const transcript = Array.from(event.results)
+      .map((result) => result[0]?.transcript || "")
+      .join(" ");
+    const items = parseShoppingItems(transcript);
+
+    if (!items.length) {
+      voiceStatus.textContent = transcript ? "No items found." : "No speech found.";
+      return;
+    }
 
     try {
-      const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
-      const { items, transcript } = await transcribeAudio(blob);
-      if (!items.length) {
-        voiceStatus.textContent = transcript ? "No items found." : "No speech found.";
-        return;
-      }
       await addTodosFromVoice(items);
       voiceStatus.textContent = `Added ${items.length} item${items.length === 1 ? "" : "s"}.`;
     } catch (error) {
       voiceStatus.textContent = "";
       alert(error.message);
-    } finally {
-      mediaRecorder = null;
-      audioChunks = [];
     }
   });
 
-  mediaRecorder.start();
-  voiceButton.dataset.recording = "true";
-  voiceStatus.textContent = "Recording. Tap the microphone again to stop.";
-  recordingTimer = setTimeout(stopVoiceRecording, 12000);
+  nextRecognition.addEventListener("error", (event) => {
+    setListening(false);
+    const code = event.error ? `SL-VOICE-${event.error.toUpperCase()}` : "SL-VOICE-ERROR";
+    voiceStatus.textContent = "";
+    alert(`${code}: Voice recognition failed.`);
+  });
+
+  nextRecognition.addEventListener("end", () => {
+    setListening(false);
+    if (voiceStatus.textContent === "Listening. Tap the microphone again to stop.") {
+      voiceStatus.textContent = "";
+    }
+  });
+
+  return nextRecognition;
 }
 
-async function toggleVoiceRecording() {
-  if (mediaRecorder && mediaRecorder.state === "recording") {
-    await stopVoiceRecording();
+function toggleVoiceRecognition() {
+  if (isListening && recognition) {
+    recognition.stop();
+    return;
+  }
+
+  recognition = createRecognition();
+  if (!recognition) {
+    alert("SL-VOICE-UNSUPPORTED: Voice recognition is not supported in this browser.");
     return;
   }
 
   try {
-    await startVoiceRecording();
+    recognition.start();
   } catch (error) {
+    setListening(false);
     voiceStatus.textContent = "";
     alert(`SL-VOICE-START: ${error.message}`);
   }
@@ -392,7 +386,7 @@ titleInput.addEventListener("input", () => {
 pinForm.addEventListener("submit", login);
 todoForm.addEventListener("submit", addTodo);
 logoutButton.addEventListener("click", logout);
-voiceButton.addEventListener("click", toggleVoiceRecording);
+voiceButton.addEventListener("click", toggleVoiceRecognition);
 
 boot().catch((error) => {
   appShell.dataset.auth = "locked";

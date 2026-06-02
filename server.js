@@ -14,8 +14,6 @@ const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || "0.0.0.0";
 const TODO_PIN = process.env.TODO_PIN || "1234";
 const TODO_SECRET = process.env.TODO_SECRET || "change-me-before-internet";
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
-const TRANSCRIPTION_MODEL = process.env.TRANSCRIPTION_MODEL || "gpt-4o-mini-transcribe";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 
 const MIME_TYPES = {
@@ -110,80 +108,16 @@ function pinMatches(pin) {
   return timingSafeEqual(actual, expected);
 }
 
-async function readRequestJson(req, maxBytes = 64_000) {
+async function readRequestJson(req) {
   const chunks = [];
-  let totalBytes = 0;
   for await (const chunk of req) {
     chunks.push(chunk);
-    totalBytes += chunk.length;
-    if (totalBytes > maxBytes) {
+    if (Buffer.concat(chunks).length > 64_000) {
       throw new Error("Request body too large");
     }
   }
   const body = Buffer.concat(chunks).toString("utf8");
   return body ? JSON.parse(body) : {};
-}
-
-function audioExtension(mimeType) {
-  if (mimeType.includes("mp4")) return "m4a";
-  if (mimeType.includes("mpeg")) return "mp3";
-  if (mimeType.includes("wav")) return "wav";
-  return "webm";
-}
-
-function parseShoppingItems(transcript) {
-  return transcript
-    .replace(/\b(add|please add|put|please put|buy|get|we need|i need|to the list|on the list|shopping list)\b/gi, " ")
-    .split(/,|\n|\band\b|\bplus\b|;/i)
-    .map((item) => item.replace(/[.!?]$/g, "").trim().replace(/\s+/g, " "))
-    .filter((item) => item.length > 0)
-    .filter((item, index, items) => items.findIndex((candidate) => candidate.toLowerCase() === item.toLowerCase()) === index)
-    .slice(0, 20);
-}
-
-async function transcribeAudioPayload(body) {
-  if (!OPENAI_API_KEY) {
-    return { error: { status: 500, code: "SL-500-OPENAI-KEY", message: "OpenAI API key is not configured" } };
-  }
-
-  const mimeType = String(body.mimeType || "audio/webm");
-  const audioBase64 = String(body.audioBase64 || "");
-  if (!audioBase64) {
-    return { error: { status: 400, code: "SL-400-AUDIO", message: "Audio is required" } };
-  }
-
-  const audioBytes = Buffer.from(audioBase64, "base64");
-  if (!audioBytes.length || audioBytes.length > 8_000_000) {
-    return { error: { status: 400, code: "SL-400-AUDIO-SIZE", message: "Audio is too large" } };
-  }
-
-  const formData = new FormData();
-  const file = new Blob([audioBytes], { type: mimeType });
-  formData.append("file", file, `shopping.${audioExtension(mimeType)}`);
-  formData.append("model", TRANSCRIPTION_MODEL);
-  formData.append("response_format", "json");
-
-  const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`
-    },
-    body: formData
-  });
-
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    return {
-      error: {
-        status: 502,
-        code: "SL-502-TRANSCRIBE",
-        message: payload.error?.message || "Transcription failed"
-      }
-    };
-  }
-
-  const transcript = String(payload.text || "").trim();
-  return { transcript, items: parseShoppingItems(transcript) };
 }
 
 function sanitizeTodo(input, existing = {}) {
@@ -276,18 +210,6 @@ async function handleApi(req, res) {
     todos.unshift(todo);
     await writeTodos(todos);
     jsonResponse(res, 201, { todo });
-    return;
-  }
-
-  if (url.pathname === "/api/transcribe" && req.method === "POST") {
-    const body = await readRequestJson(req, 11_000_000);
-    const result = await transcribeAudioPayload(body);
-    if (result.error) {
-      errorResponse(res, result.error.status, result.error.code, result.error.message);
-      return;
-    }
-
-    jsonResponse(res, 200, result);
     return;
   }
 
