@@ -1,7 +1,5 @@
 const state = {
-  todos: [],
-  filter: "active",
-  search: ""
+  todos: []
 };
 
 const appShell = document.querySelector(".app-shell");
@@ -10,20 +8,16 @@ const pinInput = document.querySelector("#pin-input");
 const pinError = document.querySelector("#pin-error");
 const pinWarning = document.querySelector("#pin-warning");
 const todoForm = document.querySelector("#todo-form");
-const todoList = document.querySelector("#todo-list");
+const titleInput = document.querySelector("#todo-title");
+const neededList = document.querySelector("#needed-list");
+const completedList = document.querySelector("#completed-list");
+const neededCount = document.querySelector("#needed-count");
+const completedCount = document.querySelector("#completed-count");
+const emptyNeeded = document.querySelector("#empty-needed");
+const emptyCompleted = document.querySelector("#empty-completed");
+const suggestions = document.querySelector("#suggestions");
 const template = document.querySelector("#todo-template");
-const emptyState = document.querySelector("#empty-state");
-const searchInput = document.querySelector("#search-input");
 const logoutButton = document.querySelector("#logout-button");
-const viewLabel = document.querySelector("#view-label");
-const viewTitle = document.querySelector("#view-title");
-
-const filterTitles = {
-  active: ["Active", "Things to do"],
-  today: ["Today", "Due today"],
-  scheduled: ["Scheduled", "Planned reminders"],
-  completed: ["Completed", "Finished reminders"]
-};
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -38,47 +32,49 @@ async function api(path, options = {}) {
   return payload;
 }
 
-function todayString() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function visibleTodos() {
-  const today = todayString();
-  const search = state.search.trim().toLowerCase();
-
-  return state.todos.filter((todo) => {
-    const matchesFilter =
-      state.filter === "completed"
-        ? todo.completed
-        : state.filter === "today"
-          ? !todo.completed && todo.dueDate === today
-          : state.filter === "scheduled"
-            ? !todo.completed && Boolean(todo.dueDate)
-            : !todo.completed;
-
-    const matchesSearch =
-      !search ||
-      todo.title.toLowerCase().includes(search) ||
-      todo.notes.toLowerCase().includes(search);
-
-    return matchesFilter && matchesSearch;
-  });
-}
-
-function countBy(filter) {
-  const today = todayString();
-  if (filter === "completed") return state.todos.filter((todo) => todo.completed).length;
-  if (filter === "today") return state.todos.filter((todo) => !todo.completed && todo.dueDate === today).length;
-  if (filter === "scheduled") return state.todos.filter((todo) => !todo.completed && todo.dueDate).length;
-  return state.todos.filter((todo) => !todo.completed).length;
-}
-
-function debounce(fn, wait = 400) {
+function debounce(fn, wait = 350) {
   let timeout;
   return (...args) => {
     clearTimeout(timeout);
     timeout = setTimeout(() => fn(...args), wait);
   };
+}
+
+function normalizedTitle(value) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function activeTitles() {
+  return new Set(
+    state.todos
+      .filter((todo) => !todo.completed)
+      .map((todo) => todo.title.toLowerCase())
+  );
+}
+
+function suggestionTitles() {
+  const query = normalizedTitle(titleInput.value).toLowerCase();
+  const active = activeTitles();
+  const seen = new Set();
+
+  return state.todos
+    .filter((todo) => todo.completed)
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))
+    .map((todo) => normalizedTitle(todo.title))
+    .filter((title) => {
+      const key = title.toLowerCase();
+      if (!title || seen.has(key) || active.has(key)) return false;
+      if (query && !key.includes(query)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 8);
+}
+
+function sortedTodos(completed) {
+  return state.todos
+    .filter((todo) => todo.completed === completed)
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
 }
 
 async function updateTodo(id, patch) {
@@ -100,68 +96,60 @@ async function updateTodo(id, patch) {
   }
 }
 
-const debouncedUpdate = debounce(updateTodo);
+const debouncedTitleUpdate = debounce((id, value) => {
+  const title = normalizedTitle(value);
+  if (title) updateTodo(id, { title });
+}, 450);
 
-function renderCounts() {
-  for (const filter of ["active", "today", "scheduled", "completed"]) {
-    document.querySelector(`#${filter}-count`).textContent = countBy(filter);
-  }
+function renderItem(todo) {
+  const item = template.content.firstElementChild.cloneNode(true);
+  item.dataset.id = todo.id;
+  item.dataset.completed = String(todo.completed);
+
+  const completeInput = item.querySelector(".complete-input");
+  const itemTitle = item.querySelector(".title-input");
+  const deleteButton = item.querySelector(".delete-button");
+
+  completeInput.checked = todo.completed;
+  itemTitle.value = todo.title;
+
+  completeInput.addEventListener("change", () => updateTodo(todo.id, { completed: completeInput.checked }));
+  itemTitle.addEventListener("input", () => debouncedTitleUpdate(todo.id, itemTitle.value));
+  itemTitle.addEventListener("blur", () => {
+    const title = normalizedTitle(itemTitle.value);
+    if (title && title !== todo.title) updateTodo(todo.id, { title });
+  });
+  deleteButton.addEventListener("click", () => deleteTodo(todo.id));
+
+  return item;
 }
 
-function renderFilters() {
-  document.querySelectorAll(".filter").forEach((button) => {
-    button.classList.toggle("active", button.dataset.filter === state.filter);
-  });
-  const [label, title] = filterTitles[state.filter];
-  viewLabel.textContent = label;
-  viewTitle.textContent = title;
-}
+function renderSuggestions() {
+  suggestions.replaceChildren();
+  const titles = suggestionTitles();
+  suggestions.hidden = titles.length === 0;
 
-function renderTodos() {
-  const todos = visibleTodos().sort((a, b) => {
-    if (a.completed !== b.completed) return Number(a.completed) - Number(b.completed);
-    if (a.dueDate && b.dueDate && a.dueDate !== b.dueDate) return a.dueDate.localeCompare(b.dueDate);
-    if (a.dueDate !== b.dueDate) return a.dueDate ? -1 : 1;
-    return new Date(b.createdAt) - new Date(a.createdAt);
-  });
-
-  todoList.replaceChildren();
-  emptyState.hidden = todos.length > 0;
-
-  for (const todo of todos) {
-    const item = template.content.firstElementChild.cloneNode(true);
-    item.dataset.id = todo.id;
-    item.dataset.completed = String(todo.completed);
-    item.dataset.priority = todo.priority;
-
-    const completeInput = item.querySelector(".complete-input");
-    const titleInput = item.querySelector(".title-input");
-    const notesInput = item.querySelector(".notes-input");
-    const dueInput = item.querySelector(".due-input");
-    const priorityInput = item.querySelector(".priority-input");
-    const deleteButton = item.querySelector(".delete-button");
-
-    completeInput.checked = todo.completed;
-    titleInput.value = todo.title;
-    notesInput.value = todo.notes;
-    dueInput.value = todo.dueDate;
-    priorityInput.value = todo.priority;
-
-    completeInput.addEventListener("change", () => updateTodo(todo.id, { completed: completeInput.checked }));
-    titleInput.addEventListener("input", () => debouncedUpdate(todo.id, { title: titleInput.value }));
-    notesInput.addEventListener("input", () => debouncedUpdate(todo.id, { notes: notesInput.value }));
-    dueInput.addEventListener("change", () => updateTodo(todo.id, { dueDate: dueInput.value }));
-    priorityInput.addEventListener("change", () => updateTodo(todo.id, { priority: priorityInput.value }));
-    deleteButton.addEventListener("click", () => deleteTodo(todo.id));
-
-    todoList.append(item);
+  for (const title of titles) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = title;
+    button.addEventListener("click", () => addTodoFromTitle(title));
+    suggestions.append(button);
   }
 }
 
 function render() {
-  renderCounts();
-  renderFilters();
-  renderTodos();
+  const needed = sortedTodos(false);
+  const completed = sortedTodos(true);
+
+  neededCount.textContent = needed.length;
+  completedCount.textContent = completed.length;
+  emptyNeeded.hidden = needed.length > 0;
+  emptyCompleted.hidden = completed.length > 0;
+
+  neededList.replaceChildren(...needed.map(renderItem));
+  completedList.replaceChildren(...completed.map(renderItem));
+  renderSuggestions();
 }
 
 async function loadTodos() {
@@ -170,23 +158,27 @@ async function loadTodos() {
   render();
 }
 
-async function addTodo(event) {
-  event.preventDefault();
-  const formData = new FormData(todoForm);
-  const payload = Object.fromEntries(formData.entries());
+async function addTodoFromTitle(rawTitle) {
+  const title = normalizedTitle(rawTitle);
+  if (!title) return;
 
   try {
     const { todo } = await api("/api/todos", {
       method: "POST",
-      body: JSON.stringify(payload)
+      body: JSON.stringify({ title })
     });
     state.todos.unshift(todo);
     todoForm.reset();
-    document.querySelector("#todo-title").focus();
+    titleInput.focus();
     render();
   } catch (error) {
     alert(error.message);
   }
+}
+
+async function addTodo(event) {
+  event.preventDefault();
+  await addTodoFromTitle(titleInput.value);
 }
 
 async function deleteTodo(id) {
@@ -241,18 +233,7 @@ async function boot() {
   }
 }
 
-document.querySelectorAll(".filter").forEach((button) => {
-  button.addEventListener("click", () => {
-    state.filter = button.dataset.filter;
-    render();
-  });
-});
-
-searchInput.addEventListener("input", () => {
-  state.search = searchInput.value;
-  render();
-});
-
+titleInput.addEventListener("input", renderSuggestions);
 pinForm.addEventListener("submit", login);
 todoForm.addEventListener("submit", addTodo);
 logoutButton.addEventListener("click", logout);

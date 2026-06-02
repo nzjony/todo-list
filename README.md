@@ -1,6 +1,6 @@
-# Personal Reminders
+# Shopping List
 
-A tiny dependency-free Reminders-style web app with a shared PIN gate and local JSON storage.
+A tiny dependency-free shopping list web app with a shared PIN gate and local JSON storage.
 
 ## Run locally
 
@@ -18,7 +18,7 @@ PORT=8080 HOST=0.0.0.0 TODO_PIN=2468 TODO_SECRET="replace-with-a-long-random-str
 
 ## Netlify
 
-This project is Netlify-ready. It publishes `public/`, routes `/api/*` to a Netlify Function, and stores reminders in Netlify Blobs.
+This project is Netlify-ready. It publishes `public/`, routes `/api/*` to a Netlify Function, and stores shopping items in Netlify Blobs.
 
 Set these environment variables in Netlify before sharing the site:
 

@@ -1,17 +1,14 @@
 :root {
   color-scheme: light;
-  --bg: #f6f3ed;
+  --bg: #f7f4ef;
   --surface: #ffffff;
-  --surface-2: #edf4f2;
+  --surface-2: #edf5f2;
   --ink: #202124;
-  --muted: #69716f;
-  --line: #d9ded9;
+  --muted: #68716e;
+  --line: #dbe0db;
   --accent: #0f766e;
   --accent-strong: #0b5f59;
   --danger: #b42318;
-  --priority-high: #d92d20;
-  --priority-medium: #b54708;
-  --priority-low: #2e6fbb;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -24,14 +21,12 @@ body {
   margin: 0;
   color: var(--ink);
   background:
-    linear-gradient(135deg, rgba(15, 118, 110, 0.12), rgba(217, 45, 32, 0.04)),
+    linear-gradient(135deg, rgba(15, 118, 110, 0.12), rgba(46, 111, 187, 0.06)),
     var(--bg);
 }
 
 button,
-input,
-select,
-textarea {
+input {
   font: inherit;
 }
 
@@ -49,8 +44,8 @@ button {
   display: grid;
 }
 
-.app-shell[data-auth="loading"] .todo-app,
-.app-shell[data-auth="locked"] .todo-app,
+.app-shell[data-auth="loading"] .shopping-app,
+.app-shell[data-auth="locked"] .shopping-app,
 .app-shell[data-auth="unlocked"] .pin-panel {
   display: none;
 }
@@ -79,16 +74,16 @@ button {
 }
 
 .brand-mark span:nth-child(2) {
-  background: #d92d20;
-}
-
-.brand-mark span:nth-child(3) {
   background: #2e6fbb;
 }
 
+.brand-mark span:nth-child(3) {
+  background: #d92d20;
+}
+
 .pin-panel h1,
-.sidebar h1,
-.toolbar h2 {
+.app-header h1,
+.section-heading h2 {
   margin: 0;
   letter-spacing: 0;
 }
@@ -106,65 +101,54 @@ button {
   padding: 18px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.74);
+  background: rgba(255, 255, 255, 0.78);
   box-shadow: 0 20px 70px rgba(32, 33, 36, 0.08);
 }
 
 .pin-form label,
-.composer label,
-.search,
-.notes-field {
+.composer label {
   display: grid;
   gap: 8px;
   color: var(--muted);
   font-size: 0.86rem;
-  font-weight: 700;
+  font-weight: 800;
 }
 
-.pin-row {
+.pin-row,
+.add-row {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 10px;
+}
+
+.pin-row {
   margin-top: 8px;
 }
 
 .pin-row input,
-.search input,
-.composer input,
-.composer select,
-.composer textarea,
-.todo-item input,
-.todo-item select,
-.todo-item textarea {
+.add-row input,
+.title-input {
   width: 100%;
+  min-height: 48px;
   border: 1px solid var(--line);
   border-radius: 8px;
+  padding: 0 14px;
   color: var(--ink);
   background: var(--surface);
 }
 
-.pin-row input,
-.search input,
-.composer input,
-.composer select,
-.todo-item input,
-.todo-item select {
-  min-height: 44px;
-  padding: 0 12px;
-}
-
 .pin-row button,
-.composer button {
-  min-height: 44px;
+.add-row button {
+  min-height: 48px;
   border-radius: 8px;
-  padding: 0 18px;
+  padding: 0 20px;
   color: #fff;
   background: var(--accent);
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .pin-row button:hover,
-.composer button:hover {
+.add-row button:hover {
   background: var(--accent-strong);
 }
 
@@ -179,20 +163,19 @@ button {
   color: #8a5100;
 }
 
-.todo-app {
-  display: grid;
-  grid-template-columns: 280px 1fr;
+.shopping-app {
+  width: min(760px, 100%);
   min-height: 100vh;
+  margin: 0 auto;
+  padding: 24px clamp(16px, 4vw, 36px) 48px;
 }
 
-.sidebar {
-  display: grid;
-  align-content: start;
-  gap: 24px;
-  padding: 28px;
-  border-right: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.58);
-  backdrop-filter: blur(12px);
+.app-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0 22px;
 }
 
 .eyebrow {
@@ -204,102 +187,80 @@ button {
   text-transform: uppercase;
 }
 
-.sidebar h1 {
-  font-size: 2rem;
-}
-
-.filters {
-  display: grid;
-  gap: 8px;
-}
-
-.filter,
-.ghost-button {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 44px;
-  border-radius: 8px;
-  padding: 0 12px;
-  color: var(--ink);
-  background: transparent;
-  font-weight: 750;
-  text-align: left;
-}
-
-.filter:hover,
-.filter.active {
-  background: var(--surface);
-}
-
-.filter strong {
-  min-width: 30px;
-  border-radius: 999px;
-  padding: 4px 8px;
-  color: var(--muted);
-  background: var(--surface-2);
-  font-size: 0.8rem;
-  text-align: center;
+.app-header h1 {
+  font-size: clamp(2.1rem, 7vw, 4rem);
 }
 
 .ghost-button {
-  justify-content: center;
+  min-height: 40px;
   border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 14px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.64);
+  font-weight: 800;
 }
 
 .content {
-  width: min(980px, 100%);
-  padding: 30px clamp(16px, 4vw, 48px);
-}
-
-.toolbar {
   display: grid;
-  grid-template-columns: 1fr minmax(180px, 300px);
-  align-items: end;
-  gap: 20px;
-  margin-bottom: 20px;
-}
-
-.toolbar h2 {
-  font-size: clamp(1.8rem, 4vw, 3rem);
+  gap: 22px;
 }
 
 .composer {
   display: grid;
   gap: 12px;
-  margin-bottom: 18px;
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 12px 40px rgba(32, 33, 36, 0.07);
 }
 
-.composer-main label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.composer-main input {
-  min-height: 50px;
-  font-size: 1.08rem;
-  font-weight: 750;
+.suggestions[hidden] {
+  display: none;
 }
 
-.composer-grid {
+.suggestions button {
+  min-height: 34px;
+  border-radius: 999px;
+  padding: 0 12px;
+  color: var(--accent-strong);
+  background: var(--surface-2);
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.list-section {
   display: grid;
-  grid-template-columns: minmax(140px, 1fr) minmax(140px, 1fr) auto;
   gap: 10px;
-  align-items: end;
 }
 
-.composer textarea,
-.todo-item textarea {
-  min-height: 44px;
-  padding: 11px 12px;
-  resize: vertical;
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.section-heading h2 {
+  font-size: 1.25rem;
+}
+
+.section-heading span {
+  min-width: 34px;
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.8);
+  font-size: 0.86rem;
+  font-weight: 900;
+  text-align: center;
 }
 
 .todo-list {
@@ -314,8 +275,8 @@ button {
   display: grid;
   grid-template-columns: 34px 1fr auto;
   gap: 12px;
-  align-items: start;
-  padding: 14px;
+  align-items: center;
+  padding: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
@@ -327,7 +288,6 @@ button {
   display: block;
   width: 28px;
   height: 28px;
-  margin-top: 8px;
 }
 
 .complete-control input {
@@ -358,44 +318,19 @@ button {
   transform: rotate(45deg) translate(-1px, -1px);
 }
 
-.todo-body {
-  display: grid;
-  gap: 8px;
-}
-
 .title-input {
   border-color: transparent;
-  font-size: 1.03rem;
+  font-size: 1.05rem;
   font-weight: 800;
 }
 
-.notes-input {
-  border-color: transparent;
-  color: var(--muted);
-}
-
-.todo-meta {
-  display: grid;
-  grid-template-columns: minmax(130px, 190px) minmax(130px, 170px);
-  gap: 8px;
-}
-
-.todo-item[data-completed="true"] .title-input,
-.todo-item[data-completed="true"] .notes-input {
+.todo-item[data-completed="true"] .title-input {
   color: var(--muted);
   text-decoration: line-through;
 }
 
-.todo-item[data-priority="high"] {
-  border-left: 5px solid var(--priority-high);
-}
-
-.todo-item[data-priority="medium"] {
-  border-left: 5px solid var(--priority-medium);
-}
-
-.todo-item[data-priority="low"] {
-  border-left: 5px solid var(--priority-low);
+.completed-list .todo-item {
+  background: rgba(255, 255, 255, 0.66);
 }
 
 .delete-button {
@@ -408,9 +343,14 @@ button {
 }
 
 .empty-state {
-  padding: 32px 16px;
+  padding: 24px 16px;
   color: var(--muted);
   text-align: center;
+}
+
+.empty-state.compact {
+  padding: 8px 0;
+  text-align: left;
 }
 
 .empty-state h3 {
@@ -422,44 +362,29 @@ button {
   margin: 0;
 }
 
-@media (max-width: 760px) {
-  .todo-app {
-    grid-template-columns: 1fr;
+@media (max-width: 560px) {
+  .shopping-app {
+    padding-top: 16px;
   }
 
-  .sidebar {
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    gap: 14px;
-    padding: 16px;
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
+  .app-header {
+    align-items: start;
   }
 
-  .filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .toolbar,
-  .composer-grid,
+  .add-row,
   .todo-item {
     grid-template-columns: 1fr;
   }
 
   .todo-item {
     position: relative;
-    padding-left: 58px;
+    padding-left: 56px;
   }
 
   .complete-control {
     position: absolute;
-    left: 16px;
-    top: 14px;
-  }
-
-  .todo-meta {
-    grid-template-columns: 1fr;
+    left: 14px;
+    top: 22px;
   }
 
   .delete-button {
