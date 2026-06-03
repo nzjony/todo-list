@@ -90,6 +90,9 @@ function sanitizeTodo(input, existing = {}) {
       ? input.priority
       : existing.priority || "none",
     completed: Boolean(input.completed ?? existing.completed ?? false),
+    latitude: input.latitude === null ? null : typeof input.latitude === "number" ? input.latitude : existing.latitude ?? null,
+    longitude: input.longitude === null ? null : typeof input.longitude === "number" ? input.longitude : existing.longitude ?? null,
+    locationName: String(input.locationName ?? existing.locationName ?? "").trim().slice(0, 80),
     createdAt: existing.createdAt || now,
     updatedAt: now
   };

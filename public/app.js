@@ -5,6 +5,7 @@ const state = {
 
 const INITIAL_SUGGESTION_LIMIT = 6;
 const SUGGESTION_PAGE_SIZE = 5;
+const LOCATION_MATCH_METERS = 300;
 
 const appShell = document.querySelector(".app-shell");
 const pinForm = document.querySelector("#pin-form");
@@ -101,6 +102,113 @@ function sortedTodos(completed) {
     .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
 }
 
+function distanceMeters(a, b) {
+  const earthRadiusMeters = 6371000;
+  const lat1 = (a.latitude * Math.PI) / 180;
+  const lat2 = (b.latitude * Math.PI) / 180;
+  const deltaLat = ((b.latitude - a.latitude) * Math.PI) / 180;
+  const deltaLon = ((b.longitude - a.longitude) * Math.PI) / 180;
+  const value =
+    Math.sin(deltaLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) ** 2;
+  return 2 * earthRadiusMeters * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+}
+
+function knownLocations() {
+  const locations = [];
+  const seen = new Set();
+
+  for (const todo of state.todos) {
+    if (!todo.locationName || typeof todo.latitude !== "number" || typeof todo.longitude !== "number") continue;
+
+    const key = todo.locationName.toLowerCase();
+    if (seen.has(key)) continue;
+
+    seen.add(key);
+    locations.push({
+      name: todo.locationName,
+      latitude: todo.latitude,
+      longitude: todo.longitude
+    });
+  }
+
+  return locations;
+}
+
+function currentPosition() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("Geolocation is not supported in this browser."));
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        });
+      },
+      (error) => reject(error),
+      {
+        enableHighAccuracy: false,
+        maximumAge: 120000,
+        timeout: 10000
+      }
+    );
+  });
+}
+
+async function completionLocationPatch() {
+  const current = await currentPosition();
+  const match = knownLocations()
+    .map((location) => ({
+      ...location,
+      distance: distanceMeters(current, location)
+    }))
+    .sort((a, b) => a.distance - b.distance)
+    .find((location) => location.distance <= LOCATION_MATCH_METERS);
+
+  if (match) {
+    return {
+      completed: true,
+      latitude: current.latitude,
+      longitude: current.longitude,
+      locationName: match.name
+    };
+  }
+
+  const enteredName = prompt("Name this location");
+  const locationName = normalizedTitle(enteredName || "");
+
+  return {
+    completed: true,
+    latitude: current.latitude,
+    longitude: current.longitude,
+    locationName
+  };
+}
+
+async function completeTodo(todo, checked) {
+  if (!checked) {
+    await updateTodo(todo.id, {
+      completed: false,
+      latitude: null,
+      longitude: null,
+      locationName: ""
+    });
+    return;
+  }
+
+  try {
+    const patch = await completionLocationPatch();
+    await updateTodo(todo.id, patch);
+  } catch (error) {
+    alert(`SL-LOCATION: ${error.message || "Could not get current location."}`);
+    await updateTodo(todo.id, { completed: true });
+  }
+}
+
 async function updateTodo(id, patch) {
   const current = state.todos.find((todo) => todo.id === id);
   const payload = {
@@ -137,12 +245,15 @@ function renderItem(todo) {
 
   const completeInput = item.querySelector(".complete-input");
   const itemTitle = item.querySelector(".title-input");
+  const locationLabel = item.querySelector(".location-label");
   const deleteButton = item.querySelector(".delete-button");
 
   completeInput.checked = todo.completed;
   itemTitle.value = todo.title;
+  locationLabel.hidden = !todo.completed || !todo.locationName;
+  locationLabel.textContent = todo.locationName ? `@ ${todo.locationName}` : "";
 
-  completeInput.addEventListener("change", () => updateTodo(todo.id, { completed: completeInput.checked }));
+  completeInput.addEventListener("change", () => completeTodo(todo, completeInput.checked));
   itemTitle.addEventListener("input", () => debouncedTitleUpdate(todo.id, itemTitle.value));
   itemTitle.addEventListener("blur", () => {
     const title = normalizedTitle(itemTitle.value);
