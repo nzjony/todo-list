@@ -335,7 +335,7 @@ button {
 
 .todo-item {
   display: grid;
-  grid-template-columns: 34px 1fr auto;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
   padding: 12px;
@@ -384,6 +384,7 @@ button {
   border-color: transparent;
   font-size: 1.05rem;
   font-weight: 800;
+  min-width: 0;
 }
 
 .todo-item[data-completed="true"] .title-input {
@@ -392,7 +393,7 @@ button {
 }
 
 .completed-list .todo-item {
-  grid-template-columns: 28px 1fr auto;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
   gap: 8px;
   padding: 7px 8px;
   background: rgba(255, 255, 255, 0.66);
@@ -509,16 +510,17 @@ button {
   }
 
   .completed-list .todo-item {
-    padding-left: 44px;
+    grid-template-columns: 24px minmax(0, 1fr) 32px;
+    padding: 6px 8px;
   }
 
   .completed-list .complete-control {
-    left: 12px;
-    top: 13px;
+    position: relative;
+    left: auto;
+    top: auto;
   }
 
   .completed-list .delete-button {
-    right: 10px;
-    top: 10px;
+    position: static;
   }
 }
