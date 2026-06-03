@@ -392,7 +392,40 @@ button {
 }
 
 .completed-list .todo-item {
+  grid-template-columns: 28px 1fr auto;
+  gap: 8px;
+  padding: 7px 8px;
   background: rgba(255, 255, 255, 0.66);
+  box-shadow: none;
+}
+
+.completed-list .complete-control,
+.completed-list .complete-control span {
+  width: 22px;
+  height: 22px;
+}
+
+.completed-list .complete-control input:checked + span::after {
+  width: 5px;
+  height: 10px;
+}
+
+.completed-list .title-input {
+  min-height: 34px;
+  padding: 0 8px;
+  font-size: 0.92rem;
+  font-weight: 750;
+}
+
+.completed-list .delete-button {
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+}
+
+.completed-list .delete-button svg {
+  width: 15px;
+  height: 15px;
 }
 
 .delete-button {
@@ -473,5 +506,19 @@ button {
     position: absolute;
     right: 12px;
     top: 17px;
+  }
+
+  .completed-list .todo-item {
+    padding-left: 44px;
+  }
+
+  .completed-list .complete-control {
+    left: 12px;
+    top: 13px;
+  }
+
+  .completed-list .delete-button {
+    right: 10px;
+    top: 10px;
   }
 }
