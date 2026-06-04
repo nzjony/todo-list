@@ -59,6 +59,24 @@ function normalizedTitle(value) {
   return value.trim().replace(/\s+/g, " ");
 }
 
+function todoQuantity(todo) {
+  return Number.isFinite(todo.quantity) && todo.quantity > 0 ? todo.quantity : 1;
+}
+
+function parseItemInput(value) {
+  const normalized = normalizedTitle(value);
+  const match = normalized.match(/^(\d+)\s+(.+)$/);
+  if (!match) {
+    return { title: normalized, quantity: 1 };
+  }
+
+  const quantity = Math.max(1, Math.min(999, Number(match[1])));
+  return {
+    title: normalizedTitle(match[2]),
+    quantity
+  };
+}
+
 function activeTitles() {
   return new Set(
     state.todos
@@ -86,7 +104,7 @@ function suggestionTitles() {
       title
     };
 
-    current.count += 1;
+    current.count += todoQuantity(todo);
     current.latest = Math.max(current.latest, new Date(todo.updatedAt || todo.createdAt).getTime());
     counts.set(key, current);
   }
@@ -200,13 +218,53 @@ async function completeTodo(todo, checked) {
     return;
   }
 
+  const quantity = todoQuantity(todo);
+  const gotQuantity = quantity > 1 ? askCompletedQuantity(quantity, todo.title) : 1;
+
+  if (gotQuantity <= 0) {
+    render();
+    return;
+  }
+
+  let patch = { completed: true };
   try {
-    const patch = await completionLocationPatch();
-    await updateTodo(todo.id, patch);
+    patch = await completionLocationPatch();
   } catch (error) {
     alert(`SL-LOCATION: ${error.message || "Could not get current location."}`);
-    await updateTodo(todo.id, { completed: true });
   }
+
+  if (gotQuantity < quantity) {
+    await addCompletedPartial(todo, gotQuantity, patch);
+    await updateTodo(todo.id, { quantity: quantity - gotQuantity });
+    return;
+  }
+
+  await updateTodo(todo.id, { ...patch, quantity });
+}
+
+function askCompletedQuantity(quantity, title) {
+  const answer = prompt(`How many ${title} did you get?`, String(quantity));
+  if (answer === null) return 0;
+
+  const parsed = Math.floor(Number(answer));
+  if (!Number.isFinite(parsed) || parsed < 0) return 0;
+  return Math.min(quantity, parsed);
+}
+
+async function addCompletedPartial(todo, quantity, locationPatch) {
+  const { todo: completedTodo } = await api("/api/todos", {
+    method: "POST",
+    body: JSON.stringify({
+      title: todo.title,
+      quantity,
+      completed: true,
+      latitude: locationPatch.latitude ?? null,
+      longitude: locationPatch.longitude ?? null,
+      locationName: locationPatch.locationName || ""
+    })
+  });
+  state.todos.unshift(completedTodo);
+  render();
 }
 
 async function updateTodo(id, patch) {
@@ -245,11 +303,14 @@ function renderItem(todo) {
 
   const completeInput = item.querySelector(".complete-input");
   const itemTitle = item.querySelector(".title-input");
+  const quantityLabel = item.querySelector(".quantity-label");
   const locationLabel = item.querySelector(".location-label");
   const deleteButton = item.querySelector(".delete-button");
 
   completeInput.checked = todo.completed;
   itemTitle.value = todo.title;
+  quantityLabel.hidden = todoQuantity(todo) <= 1;
+  quantityLabel.textContent = `x${todoQuantity(todo)}`;
   locationLabel.hidden = !todo.completed || !todo.locationName;
   locationLabel.textContent = todo.locationName ? `@ ${todo.locationName}` : "";
 
@@ -318,13 +379,21 @@ async function loadTodos() {
 }
 
 async function addTodoFromTitle(rawTitle) {
-  const title = normalizedTitle(rawTitle);
+  const { title, quantity } = parseItemInput(rawTitle);
   if (!title) return;
+
+  const activeMatch = state.todos.find((todo) => !todo.completed && todo.title.toLowerCase() === title.toLowerCase());
+  if (activeMatch) {
+    await updateTodo(activeMatch.id, { quantity: todoQuantity(activeMatch) + quantity });
+    todoForm.reset();
+    titleInput.focus();
+    return;
+  }
 
   try {
     const { todo } = await api("/api/todos", {
       method: "POST",
-      body: JSON.stringify({ title })
+      body: JSON.stringify({ title, quantity })
     });
     state.todos.unshift(todo);
     todoForm.reset();
@@ -347,7 +416,6 @@ function parseShoppingItems(transcript) {
     .split(/,|\n|\band\b|\bplus\b|;/i)
     .map((item) => item.replace(/[.!?]$/g, "").trim().replace(/\s+/g, " "))
     .filter((item) => item.length > 0)
-    .filter((item, index, items) => items.findIndex((candidate) => candidate.toLowerCase() === item.toLowerCase()) === index)
     .slice(0, 20);
 }
 
