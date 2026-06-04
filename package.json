@@ -6,9 +6,6 @@
   "scripts": {
     "start": "node server.js"
   },
-  "dependencies": {
-    "@netlify/blobs": "^9.1.0"
-  },
   "engines": {
     "node": ">=20"
   }

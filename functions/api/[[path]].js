@@ -1,8 +1,3 @@
-import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
-import { getStore } from "@netlify/blobs";
-
-const TODO_PIN = process.env.TODO_PIN || "1234";
-const TODO_SECRET = process.env.TODO_SECRET || "change-me-before-internet";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 const TODOS_KEY = "todos";
 
@@ -21,6 +16,13 @@ function errorResponse(status, code, error) {
   return jsonResponse(status, { code, error });
 }
 
+function config(env) {
+  return {
+    todoPin: env.TODO_PIN || "1234",
+    todoSecret: env.TODO_SECRET || "change-me-before-internet"
+  };
+}
+
 function parseCookies(request) {
   const header = request.headers.get("cookie") || "";
   return Object.fromEntries(
@@ -32,18 +34,32 @@ function parseCookies(request) {
   );
 }
 
-function sign(value) {
-  return createHmac("sha256", TODO_SECRET).update(value).digest("base64url");
+function base64Url(bytes) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
 }
 
-function createSessionCookie(request) {
-  const value = `${Date.now()}.${randomUUID()}`;
-  const cookie = `${value}.${sign(value)}`;
+async function sign(value, secret) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value));
+  return base64Url(new Uint8Array(signature));
+}
+
+async function createSessionCookie(request, secret) {
+  const value = `${Date.now()}.${crypto.randomUUID()}`;
+  const cookie = `${value}.${await sign(value, secret)}`;
   const secure = new URL(request.url).protocol === "https:" ? "; Secure" : "";
   return `todo_session=${encodeURIComponent(cookie)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MAX_AGE_SECONDS}${secure}`;
 }
 
-function hasValidSession(request) {
+async function hasValidSession(request, secret) {
   const cookie = parseCookies(request).todo_session;
   if (!cookie) return false;
 
@@ -52,37 +68,34 @@ function hasValidSession(request) {
 
   const signature = parts.pop();
   const value = parts.join(".");
-  const expected = sign(value);
-
-  try {
-    return timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
-  } catch {
-    return false;
-  }
+  return signature === (await sign(value, secret));
 }
 
-function pinMatches(pin) {
-  const expected = Buffer.from(TODO_PIN);
-  const actual = Buffer.from(String(pin || ""));
-  if (actual.length !== expected.length) return false;
-  return timingSafeEqual(actual, expected);
+function pinMatches(pin, expectedPin) {
+  return String(pin || "") === expectedPin;
 }
 
-async function readTodos() {
-  const store = getStore("personal-reminders");
-  const data = await store.get(TODOS_KEY, { type: "json" });
+function store(env) {
+  return env.TODO_LIST;
+}
+
+async function readTodos(env) {
+  const kv = store(env);
+  if (!kv) throw new Error("Missing TODO_LIST KV binding");
+  const data = await kv.get(TODOS_KEY, "json");
   return Array.isArray(data?.todos) ? data.todos : [];
 }
 
-async function writeTodos(todos) {
-  const store = getStore("personal-reminders");
-  await store.setJSON(TODOS_KEY, { todos });
+async function writeTodos(env, todos) {
+  const kv = store(env);
+  if (!kv) throw new Error("Missing TODO_LIST KV binding");
+  await kv.put(TODOS_KEY, JSON.stringify({ todos }));
 }
 
 function sanitizeTodo(input, existing = {}) {
   const now = new Date().toISOString();
   return {
-    id: existing.id || randomUUID(),
+    id: existing.id || crypto.randomUUID(),
     title: String(input.title || existing.title || "").trim().slice(0, 180),
     notes: String(input.notes ?? existing.notes ?? "").trim().slice(0, 2000),
     dueDate: String(input.dueDate ?? existing.dueDate ?? "").slice(0, 10),
@@ -98,34 +111,28 @@ function sanitizeTodo(input, existing = {}) {
   };
 }
 
-function apiPath(request) {
-  const pathname = new URL(request.url).pathname;
-  const functionPrefix = "/.netlify/functions/api";
-  if (pathname.startsWith(functionPrefix)) {
-    return `/api${pathname.slice(functionPrefix.length)}`;
-  }
-  return pathname;
-}
+export async function onRequest(context) {
+  const { request, env } = context;
+  const { todoPin, todoSecret } = config(env);
 
-export default async (request) => {
   try {
-    const pathname = apiPath(request);
+    const pathname = new URL(request.url).pathname;
     const method = request.method;
 
     if (pathname === "/api/session" && method === "GET") {
       return jsonResponse(200, {
-        authenticated: hasValidSession(request),
-        defaultPinWarning: TODO_PIN === "1234" || TODO_SECRET === "change-me-before-internet"
+        authenticated: await hasValidSession(request, todoSecret),
+        defaultPinWarning: todoPin === "1234" || todoSecret === "change-me-before-internet"
       });
     }
 
     if (pathname === "/api/login" && method === "POST") {
       const body = await request.json();
-      if (!pinMatches(body.pin)) {
+      if (!pinMatches(body.pin, todoPin)) {
         return errorResponse(401, "SL-401-PIN", "Incorrect PIN");
       }
 
-      return jsonResponse(200, { ok: true }, { "Set-Cookie": createSessionCookie(request) });
+      return jsonResponse(200, { ok: true }, { "Set-Cookie": await createSessionCookie(request, todoSecret) });
     }
 
     if (pathname === "/api/logout" && method === "POST") {
@@ -134,12 +141,12 @@ export default async (request) => {
       });
     }
 
-    if (!hasValidSession(request)) {
+    if (!(await hasValidSession(request, todoSecret))) {
       return errorResponse(401, "SL-401-SESSION", "PIN required");
     }
 
     if (pathname === "/api/todos" && method === "GET") {
-      return jsonResponse(200, { todos: await readTodos() });
+      return jsonResponse(200, { todos: await readTodos(env) });
     }
 
     if (pathname === "/api/todos" && method === "POST") {
@@ -149,16 +156,16 @@ export default async (request) => {
         return errorResponse(400, "SL-400-TITLE", "Title is required");
       }
 
-      const todos = await readTodos();
+      const todos = await readTodos(env);
       todos.unshift(todo);
-      await writeTodos(todos);
+      await writeTodos(env, todos);
       return jsonResponse(201, { todo });
     }
 
     const match = pathname.match(/^\/api\/todos\/([^/]+)$/);
     if (match && method === "PATCH") {
       const body = await request.json();
-      const todos = await readTodos();
+      const todos = await readTodos(env);
       const index = todos.findIndex((todo) => todo.id === match[1]);
       if (index === -1) {
         const recreated = sanitizeTodo(body, { id: match[1] });
@@ -167,7 +174,7 @@ export default async (request) => {
         }
 
         todos.unshift(recreated);
-        await writeTodos(todos);
+        await writeTodos(env, todos);
         return jsonResponse(200, { todo: recreated, repaired: true });
       }
 
@@ -177,24 +184,28 @@ export default async (request) => {
       }
 
       todos[index] = updated;
-      await writeTodos(todos);
+      await writeTodos(env, todos);
       return jsonResponse(200, { todo: updated });
     }
 
     if (match && method === "DELETE") {
-      const todos = await readTodos();
+      const todos = await readTodos(env);
       const nextTodos = todos.filter((todo) => todo.id !== match[1]);
       if (nextTodos.length === todos.length) {
         return errorResponse(404, "SL-404-ITEM", "Item not found");
       }
 
-      await writeTodos(nextTodos);
+      await writeTodos(env, nextTodos);
       return jsonResponse(200, { ok: true });
     }
 
     return errorResponse(404, "SL-404-ROUTE", "Not found");
   } catch (error) {
     console.error(error);
-    return errorResponse(500, "SL-500-SERVER", "Something went wrong");
+    const message = error.message === "Missing TODO_LIST KV binding"
+      ? "Cloudflare KV binding TODO_LIST is not configured"
+      : "Something went wrong";
+    const code = error.message === "Missing TODO_LIST KV binding" ? "SL-500-KV" : "SL-500-SERVER";
+    return errorResponse(500, code, message);
   }
-};
+}

@@ -16,18 +16,25 @@ The server binds to `0.0.0.0` by default so it can sit behind a reverse proxy, r
 PORT=8080 HOST=0.0.0.0 TODO_PIN=2468 TODO_SECRET="replace-with-a-long-random-string" node server.js
 ```
 
-## Netlify
+## Cloudflare Pages
 
-This project is Netlify-ready. It publishes `public/`, routes `/api/*` to a Netlify Function, and stores shopping items in Netlify Blobs.
+This project is Cloudflare Pages-ready. It publishes `public/`, routes `/api/*` to a Pages Function, and stores shopping items in a Cloudflare KV namespace bound as `TODO_LIST`.
 
-Set these environment variables in Netlify before sharing the site:
+In Cloudflare:
+
+1. Create a Pages project from the GitHub repo.
+2. Use no build command.
+3. Set build output directory to `public`.
+4. Create a KV namespace for the list.
+5. Bind that namespace to the Pages project as `TODO_LIST` in both Production and Preview.
+6. Set these environment variables in both Production and Preview:
 
 ```sh
 TODO_PIN=2468
 TODO_SECRET=replace-with-a-long-random-string
 ```
 
-Netlify will install `@netlify/blobs` during the deploy.
+The `wrangler.toml` file also declares `public` as the Pages output directory for Wrangler-based deploys. The KV namespace ID still has to be created in Cloudflare and bound as `TODO_LIST`.
 
 Voice input uses browser speech recognition when supported. It does not use an OpenAI API key.
 
