@@ -65,16 +65,23 @@ function todoQuantity(todo) {
 
 function parseItemInput(value) {
   const normalized = normalizedTitle(value);
-  const match = normalized.match(/^(\d+)\s+(.+)$/);
-  if (!match) {
-    return { title: normalized, quantity: 1 };
+  const prefixMatch = normalized.match(/^(\d+)\s+(.+)$/);
+  if (prefixMatch) {
+    return {
+      title: normalizedTitle(prefixMatch[2]),
+      quantity: Math.max(1, Math.min(999, Number(prefixMatch[1])))
+    };
   }
 
-  const quantity = Math.max(1, Math.min(999, Number(match[1])));
-  return {
-    title: normalizedTitle(match[2]),
-    quantity
-  };
+  const suffixMatch = normalized.match(/^(.+?)\s*(?:x|×|times)\s*(\d+)$/i);
+  if (suffixMatch) {
+    return {
+      title: normalizedTitle(suffixMatch[1]),
+      quantity: Math.max(1, Math.min(999, Number(suffixMatch[2])))
+    };
+  }
+
+  return { title: normalized, quantity: 1 };
 }
 
 function activeTitles() {

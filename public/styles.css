@@ -399,6 +399,7 @@ button {
   font-size: 1.05rem;
   font-weight: 800;
   min-width: 0;
+  width: auto;
 }
 
 .quantity-label {
