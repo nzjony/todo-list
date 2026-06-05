@@ -309,7 +309,6 @@ function renderItem(todo) {
 
   completeInput.checked = todo.completed;
   itemTitle.value = todo.title;
-  quantityLabel.hidden = todoQuantity(todo) <= 1;
   quantityLabel.textContent = `x${todoQuantity(todo)}`;
   locationLabel.hidden = !todo.completed || !todo.locationName;
   locationLabel.textContent = todo.locationName ? `@ ${todo.locationName}` : "";
