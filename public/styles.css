@@ -403,6 +403,8 @@ button {
 }
 
 .quantity-label {
+  justify-self: end;
+  white-space: nowrap;
   border-radius: 999px;
   padding: 3px 7px;
   color: var(--accent-strong);
@@ -536,6 +538,7 @@ button {
   .todo-item {
     position: relative;
     padding-left: 56px;
+    padding-right: 58px;
   }
 
   .complete-control {
