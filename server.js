@@ -122,6 +122,13 @@ async function readRequestJson(req) {
 
 function sanitizeTodo(input, existing = {}) {
   const now = new Date().toISOString();
+  const unit = ["ml", "g", "kg"].includes(input.unit) ? input.unit : existing.unit || "";
+  const amount = input.amount === null
+    ? null
+    : Number.isFinite(input.amount) && input.amount > 0 && unit
+      ? Math.min(99999, input.amount)
+      : existing.amount ?? null;
+
   return {
     id: existing.id || randomUUID(),
     title: String(input.title || existing.title || "").trim().slice(0, 180),
@@ -134,6 +141,8 @@ function sanitizeTodo(input, existing = {}) {
     quantity: Number.isFinite(input.quantity) && input.quantity > 0
       ? Math.min(999, Math.floor(input.quantity))
       : existing.quantity || 1,
+    amount,
+    unit: amount ? unit : "",
     latitude: input.latitude === null ? null : typeof input.latitude === "number" ? input.latitude : existing.latitude ?? null,
     longitude: input.longitude === null ? null : typeof input.longitude === "number" ? input.longitude : existing.longitude ?? null,
     locationName: String(input.locationName ?? existing.locationName ?? "").trim().slice(0, 80),

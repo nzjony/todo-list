@@ -63,8 +63,93 @@ function todoQuantity(todo) {
   return Number.isFinite(todo.quantity) && todo.quantity > 0 ? todo.quantity : 1;
 }
 
+function todoAmount(todo) {
+  return Number.isFinite(todo.amount) && todo.amount > 0 ? todo.amount : null;
+}
+
+function todoUnit(todo) {
+  return ["ml", "g", "kg"].includes(todo.unit) ? todo.unit : "";
+}
+
+function isMeasuredTodo(todo) {
+  return todoAmount(todo) !== null && Boolean(todoUnit(todo));
+}
+
+function formatAmount(value) {
+  return Number(value).toLocaleString(undefined, {
+    maximumFractionDigits: 2
+  });
+}
+
+function itemBadge(todo) {
+  if (isMeasuredTodo(todo)) return `${formatAmount(todoAmount(todo))} ${todoUnit(todo)}`;
+  return `x${todoQuantity(todo)}`;
+}
+
+function normalizeUnit(value) {
+  const unit = value.toLowerCase();
+  if (["ml", "milliliter", "milliliters", "millilitre", "millilitres"].includes(unit)) return "ml";
+  if (["g", "gram", "grams", "gramme", "grammes"].includes(unit)) return "g";
+  if (["kg", "kilogram", "kilograms", "kilogramme", "kilogrammes"].includes(unit)) return "kg";
+  return "";
+}
+
+function parseNumericAmount(value) {
+  const numberWords = {
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10
+  };
+  const normalized = value.toLowerCase();
+  if (numberWords[normalized]) return numberWords[normalized];
+  const parsed = Number(normalized.replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function clampAmount(value) {
+  return Math.max(0.01, Math.min(99999, value));
+}
+
 function parseItemInput(value) {
   const normalized = normalizedTitle(value);
+  const amountPattern = "(\\d+(?:[.,]\\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)";
+  const unitPattern = "(ml|milliliters?|millilitres?|g|grams?|grammes?|kg|kilograms?|kilogrammes?)";
+  const measuredSuffixMatch = normalized.match(new RegExp(`^(.+?)\\s+${amountPattern}\\s*${unitPattern}$`, "i"));
+
+  if (measuredSuffixMatch) {
+    const amount = parseNumericAmount(measuredSuffixMatch[2]);
+    const unit = normalizeUnit(measuredSuffixMatch[3]);
+    if (amount && unit) {
+      return {
+        title: normalizedTitle(measuredSuffixMatch[1]),
+        quantity: 1,
+        amount: clampAmount(amount),
+        unit
+      };
+    }
+  }
+
+  const measuredPrefixMatch = normalized.match(new RegExp(`^${amountPattern}\\s*${unitPattern}\\s+(.+)$`, "i"));
+  if (measuredPrefixMatch) {
+    const amount = parseNumericAmount(measuredPrefixMatch[1]);
+    const unit = normalizeUnit(measuredPrefixMatch[2]);
+    if (amount && unit) {
+      return {
+        title: normalizedTitle(measuredPrefixMatch[3]),
+        quantity: 1,
+        amount: clampAmount(amount),
+        unit
+      };
+    }
+  }
+
   const prefixMatch = normalized.match(/^(\d+)\s+(.+)$/);
   if (prefixMatch) {
     return {
@@ -81,7 +166,7 @@ function parseItemInput(value) {
     };
   }
 
-  return { title: normalized, quantity: 1 };
+  return { title: normalized, quantity: 1, amount: null, unit: "" };
 }
 
 function activeTitles() {
@@ -225,12 +310,36 @@ async function completeTodo(todo, checked) {
     return;
   }
 
-  const quantity = todoQuantity(todo);
-  const gotQuantity = quantity > 1 ? askCompletedQuantity(quantity, todo.title) : 1;
+  let amountPatch = {};
+  let remainderPatch = null;
 
-  if (gotQuantity <= 0) {
-    render();
-    return;
+  if (isMeasuredTodo(todo)) {
+    const amount = todoAmount(todo);
+    const unit = todoUnit(todo);
+    const gotAmount = askCompletedAmount(amount, unit, todo.title);
+
+    if (gotAmount <= 0) {
+      render();
+      return;
+    }
+
+    amountPatch = { quantity: 1, amount: gotAmount, unit };
+    if (gotAmount < amount) {
+      remainderPatch = { amount: amount - gotAmount, unit };
+    }
+  } else {
+    const quantity = todoQuantity(todo);
+    const gotQuantity = quantity > 1 ? askCompletedQuantity(quantity, todo.title) : 1;
+
+    if (gotQuantity <= 0) {
+      render();
+      return;
+    }
+
+    amountPatch = { quantity: gotQuantity, amount: null, unit: "" };
+    if (gotQuantity < quantity) {
+      remainderPatch = { quantity: quantity - gotQuantity };
+    }
   }
 
   let patch = { completed: true };
@@ -240,13 +349,13 @@ async function completeTodo(todo, checked) {
     alert(`SL-LOCATION: ${error.message || "Could not get current location."}`);
   }
 
-  if (gotQuantity < quantity) {
-    await addCompletedPartial(todo, gotQuantity, patch);
-    await updateTodo(todo.id, { quantity: quantity - gotQuantity });
+  if (remainderPatch) {
+    await addCompletedPartial(todo, amountPatch, patch);
+    await updateTodo(todo.id, remainderPatch);
     return;
   }
 
-  await updateTodo(todo.id, { ...patch, quantity });
+  await updateTodo(todo.id, { ...patch, ...amountPatch });
 }
 
 function askCompletedQuantity(quantity, title) {
@@ -258,12 +367,24 @@ function askCompletedQuantity(quantity, title) {
   return Math.min(quantity, parsed);
 }
 
-async function addCompletedPartial(todo, quantity, locationPatch) {
+function askCompletedAmount(amount, unit, title) {
+  const answer = prompt(`How many ${unit} of ${title} did you get?`, formatAmount(amount));
+  if (answer === null) return 0;
+
+  const parsed = Number(answer.replace(",", "."));
+  if (!Number.isFinite(parsed) || parsed < 0) return 0;
+  return Math.min(amount, parsed);
+}
+
+async function addCompletedPartial(todo, amountPatch, locationPatch) {
   const { todo: completedTodo } = await api("/api/todos", {
     method: "POST",
     body: JSON.stringify({
       title: todo.title,
-      quantity,
+      quantity: 1,
+      amount: null,
+      unit: "",
+      ...amountPatch,
       completed: true,
       latitude: locationPatch.latitude ?? null,
       longitude: locationPatch.longitude ?? null,
@@ -316,7 +437,7 @@ function renderItem(todo) {
 
   completeInput.checked = todo.completed;
   itemTitle.value = todo.title;
-  quantityLabel.textContent = `x${todoQuantity(todo)}`;
+  quantityLabel.textContent = itemBadge(todo);
   locationLabel.hidden = !todo.completed || !todo.locationName;
   locationLabel.textContent = todo.locationName ? `@ ${todo.locationName}` : "";
 
@@ -385,12 +506,23 @@ async function loadTodos() {
 }
 
 async function addTodoFromTitle(rawTitle) {
-  const { title, quantity } = parseItemInput(rawTitle);
+  const { title, quantity, amount, unit } = parseItemInput(rawTitle);
   if (!title) return;
 
   const activeMatch = state.todos.find((todo) => !todo.completed && todo.title.toLowerCase() === title.toLowerCase());
   if (activeMatch) {
-    await updateTodo(activeMatch.id, { quantity: todoQuantity(activeMatch) + quantity });
+    if (amount && unit && isMeasuredTodo(activeMatch) && todoUnit(activeMatch) === unit) {
+      await updateTodo(activeMatch.id, { amount: todoAmount(activeMatch) + amount, unit });
+    } else if (!amount && !isMeasuredTodo(activeMatch)) {
+      await updateTodo(activeMatch.id, { quantity: todoQuantity(activeMatch) + quantity });
+    } else {
+      const { todo } = await api("/api/todos", {
+        method: "POST",
+        body: JSON.stringify({ title, quantity, amount, unit })
+      });
+      state.todos.unshift(todo);
+      render();
+    }
     todoForm.reset();
     titleInput.focus();
     return;
@@ -399,7 +531,7 @@ async function addTodoFromTitle(rawTitle) {
   try {
     const { todo } = await api("/api/todos", {
       method: "POST",
-      body: JSON.stringify({ title, quantity })
+      body: JSON.stringify({ title, quantity, amount, unit })
     });
     state.todos.unshift(todo);
     todoForm.reset();
